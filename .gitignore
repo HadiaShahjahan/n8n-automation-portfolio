@@ -1,0 +1,25 @@
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+credentials*.json
+secrets*.json
+
+# Local n8n state
+.n8n/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
