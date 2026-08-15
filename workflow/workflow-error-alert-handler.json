@@ -1,0 +1,187 @@
+{
+  "name": "Template - Workflow Error Alert Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Redacted workflow failure reporting\n\nSelect this workflow as an Error Workflow in another workflow's settings. The Code node keeps only an execution ID, workflow name, timestamp, last node, and a generic message. Slack and Google Sheets nodes are disabled until configured.",
+        "height": 260,
+        "width": 440
+      },
+      "id": "52c83a7c-e033-41a8-a1f4-ac908709b30d",
+      "name": "Read Me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        -340
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "74f9bdbb-df55-4b8c-b5dd-6604dc17abf7",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -760,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source = $json ?? {};\nconst execution = source.execution ?? {};\nconst workflow = source.workflow ?? {};\nconst rawMessage = String(execution.error?.message ?? 'Workflow execution failed');\nconst safeMessage = rawMessage\n  .replace(/Bearer\\s+[A-Za-z0-9._~+\\/-]+/gi, 'Bearer [REDACTED]')\n  .replace(/(api[_-]?key|token|secret|password)\\s*[:=]\\s*[^\\s,;]+/gi, '$1=[REDACTED]')\n  .slice(0, 240);\nreturn [{ json: {\n  event: 'workflow_failure',\n  occurred_at: new Date().toISOString(),\n  workflow_name: String(workflow.name ?? 'Unknown workflow').slice(0, 120),\n  execution_id: String(execution.id ?? '').slice(0, 100),\n  last_node: String(execution.lastNodeExecuted ?? 'Unknown node').slice(0, 120),\n  message: safeMessage\n} }];"
+      },
+      "id": "a327f402-4a94-4fbd-89d7-703e94ea5d64",
+      "name": "Redact Error Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SLACK_BOT_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ channel: $env.SLACK_CHANNEL_ID, text: 'n8n workflow failure\\nWorkflow: ' + $json.workflow_name + '\\nExecution: ' + $json.execution_id + '\\nLast node: ' + $json.last_node + '\\nMessage: ' + $json.message }) }}",
+        "options": {}
+      },
+      "id": "f72a9d90-baf7-48b3-95b7-41d34042ab9b",
+      "name": "Slack Error Alert - Configure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -260,
+        0
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const safe = $('Redact Error Data').first().json;\nreturn [{ json: { ...safe, logged_at: new Date().toISOString() } }];"
+      },
+      "id": "f645def7-3d74-4c3b-8024-8447e3988524",
+      "name": "Prepare Audit Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Workflow Errors",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "occurred_at": "={{ $json.occurred_at }}",
+            "workflow_name": "={{ $json.workflow_name }}",
+            "execution_id": "={{ $json.execution_id }}",
+            "last_node": "={{ $json.last_node }}",
+            "message": "={{ $json.message }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "89b046aa-935b-4193-bc72-27ecf5f012c0",
+      "name": "Google Sheets Error Log - Configure",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        260,
+        0
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Redact Error Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redact Error Data": {
+      "main": [
+        [
+          {
+            "node": "Slack Error Alert - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Error Alert - Configure": {
+      "main": [
+        [
+          {
+            "node": "Prepare Audit Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Audit Row": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets Error Log - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "d7b78a75-7aef-4593-99b6-4779f3c6cc3c",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

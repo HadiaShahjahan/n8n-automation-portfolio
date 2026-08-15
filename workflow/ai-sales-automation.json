@@ -1,0 +1,1232 @@
+{
+  "name": "Portfolio - AI Sales Automation Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# AI Sales Automation Workflow\n\nSafe review mode: all external-service nodes are disabled.\n\n1. Test validation with invented data.\n2. Configure credentials and placeholder IDs.\n3. Enable provider nodes one at a time.\n4. Keep the workflow inactive until webhook authentication, retries, idempotency, retention, and error handling are approved.",
+        "height": 360,
+        "width": 500
+      },
+      "id": "47f4960a-a209-4778-b9c3-8b849be13645",
+      "name": "Read Me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1760,
+        -460
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "portfolio-ai-sales-lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "c924abdd-2c28-4fd4-b0bf-814203cead75",
+      "name": "Webhook Lead Capture",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1620,
+        0
+      ],
+      "webhookId": "f62b4c97-7ebf-45d5-a8da-00bf39463bf2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.body ?? $json;\nconst headers = $json.headers ?? {};\nconst clean = (value, max = 200) => typeof value === 'string' ? value.trim().slice(0, max) : '';\nconst requestId = clean(input.request_id ?? headers['x-request-id'], 100);\nconst email = clean(input.email, 254).toLowerCase();\nconst consentValue = input.consent;\nconst consent = consentValue === true || ['true', 'yes', '1'].includes(String(consentValue).toLowerCase());\nconst companyDomain = clean(input.company_domain, 253).toLowerCase().replace(/^https?:\\/\\//, '').replace(/\\/.*$/, '');\nconst errors = [];\nif (!requestId) errors.push({ field: 'request_id', message: 'request_id is required' });\nif (!email) errors.push({ field: 'email', message: 'email is required' });\nelse if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) errors.push({ field: 'email', message: 'email format is invalid' });\nif (consentValue === undefined || consentValue === null || consentValue === '') errors.push({ field: 'consent', message: 'consent is required' });\nconst lead = {\n  request_id: requestId,\n  email,\n  first_name: clean(input.first_name, 100),\n  last_name: clean(input.last_name, 100),\n  company: clean(input.company, 160),\n  company_domain: companyDomain,\n  job_title: clean(input.job_title, 160),\n  company_size: clean(input.company_size, 40),\n  message: clean(input.message, 2000),\n  consent,\n  received_at: new Date().toISOString()\n};\nreturn [{ json: { valid: errors.length === 0, validation_errors: errors, lead } }];"
+      },
+      "id": "a7ea5cbd-b25c-4427-98a4-4a9204196d2d",
+      "name": "Normalize and Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1380,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "afdf1445-9525-4f09-826a-a5d24311442e",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c7a41651-d1e2-4768-954d-022102fe00bd",
+      "name": "Valid Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1140,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { request_id: $json.lead?.request_id || null, status: 'validation_failed', errors: $json.validation_errors } }];"
+      },
+      "id": "4e708fac-c3a0-41c5-a3b6-9f3d995867f0",
+      "name": "Build Safe Validation Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "id": "ad436164-243e-4397-86b3-fd441d0ebfb4",
+      "name": "Respond Safe 422",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -660,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.lead.request_id }}",
+            "received_at": "={{ $json.lead.received_at }}",
+            "email": "={{ $json.lead.email }}",
+            "company": "={{ $json.lead.company }}",
+            "status": "accepted"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "7373e4ee-f0c5-4568-9b8f-049367386c3a",
+      "name": "Google Sheets Lead Store - Configure",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -900,
+        -100
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ENRICHMENT_API_URL || 'https://api.enrichment-provider.example/v1/company' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.ENRICHMENT_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ domain: $('Normalize and Validate').first().json.lead.company_domain }) }}",
+        "options": {}
+      },
+      "id": "db271659-43e1-4e89-9494-168b6a5b0e44",
+      "name": "Company Enrichment - Configure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -660,
+        -100
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.OPENAI_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ model: $env.OPENAI_MODEL || 'gpt-4.1-mini', response_format: { type: 'json_object' }, messages: [ { role: 'system', content: 'Classify an inbound B2B sales lead. Return JSON only with integer score from 0 to 100 and a concise reason. Do not infer sensitive personal traits.' }, { role: 'user', content: JSON.stringify($('Normalize and Validate').first().json.lead) } ] }) }}",
+        "options": {}
+      },
+      "id": "7df9bfa5-8aaa-44bf-8080-3ff23517813d",
+      "name": "OpenAI Qualification - Configure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -420,
+        -100
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Normalize and Validate').first().json.lead;\nlet parsed = null;\nlet source = 'rules_fallback';\ntry {\n  const content = $json?.choices?.[0]?.message?.content;\n  if (typeof content === 'string') parsed = JSON.parse(content);\n} catch (error) {\n  parsed = null;\n}\nlet score;\nlet reason;\nif (parsed && Number.isFinite(Number(parsed.score))) {\n  score = Math.max(0, Math.min(100, Math.round(Number(parsed.score))));\n  reason = String(parsed.reason ?? 'AI qualification completed').slice(0, 280);\n  source = 'openai';\n} else {\n  score = 20;\n  const size = String(lead.company_size).toLowerCase();\n  if (/51-200|201-500|501-1000|1000\\+/.test(size)) score += 25;\n  if (/manager|director|head|vp|vice president|chief|owner|founder/i.test(lead.job_title)) score += 25;\n  if (lead.company_domain) score += 10;\n  if (lead.message.length >= 40) score += 15;\n  score = Math.min(100, score);\n  reason = 'Deterministic fallback based on supplied company size, role, domain, and message completeness.';\n}\nreturn [{ json: { lead, score, qualification_reason: reason, qualification_source: source } }];"
+      },
+      "id": "70261a13-9a75-4af7-b4ff-c63c8861f4e9",
+      "name": "Parse AI Qualification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f642fab8-8e36-425d-a0dd-f6cf9bde2dc6",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 80,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fb0fbb22-43c4-461c-aef4-a5326013c4a3",
+      "name": "HOT Score?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        60,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$json, route: 'HOT' } }];"
+      },
+      "id": "2307eddf-7b96-417c-93e8-a3647f4b20d7",
+      "name": "Route HOT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a1ba5c7c-e5e2-4c8d-917d-8d478ba38c1b",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "09833137-1cf2-45e8-bc65-a1a65cbdfda0",
+      "name": "WARM Score?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        300,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$json, route: 'WARM' } }];"
+      },
+      "id": "24fd3c29-b516-4313-afbe-f0b40a526a36",
+      "name": "Route WARM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$json, route: 'COLD' } }];"
+      },
+      "id": "72bb344a-b62f-42d9-9bfb-d8f6ec9dbefb",
+      "name": "Route COLD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $json;\nreturn [{ json: { ...base, hubspot_search_body: { filterGroups: [{ filters: [{ propertyName: 'n8n_request_id', operator: 'EQ', value: base.lead.request_id }] }], properties: ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'n8n_request_id'], limit: 1 } } }];"
+      },
+      "id": "47ba4402-3a23-42ae-86cf-c997852352c7",
+      "name": "Prepare Request ID Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.HUBSPOT_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.hubspot_search_body) }}",
+        "options": {}
+      },
+      "id": "0f4c8b55-b04a-405a-86ae-5579743121d2",
+      "name": "HubSpot Search Request ID - Configure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        -100
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "38205fc2-43b9-4e49-a3b5-7c7a268fd38b",
+              "leftValue": "={{ Array.isArray($json.results) && $json.results.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6a2628f2-eb01-4b88-849c-57cff33b09df",
+      "name": "Request ID Match?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.hubapi.com/crm/v3/objects/contacts/' + $json.results[0].id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.HUBSPOT_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ properties: { email: $('Parse AI Qualification').first().json.lead.email, firstname: $('Parse AI Qualification').first().json.lead.first_name, lastname: $('Parse AI Qualification').first().json.lead.last_name, company: $('Parse AI Qualification').first().json.lead.company, jobtitle: $('Parse AI Qualification').first().json.lead.job_title, n8n_request_id: $('Parse AI Qualification').first().json.lead.request_id, n8n_lead_score: String($('Parse AI Qualification').first().json.score) } }) }}",
+        "options": {}
+      },
+      "id": "8790fd72-cfb0-4c92-9a60-01cb71187cbe",
+      "name": "HubSpot Update by Request ID - Configure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1520,
+        -220
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Parse AI Qualification').first().json;\nreturn [{ json: { ...base, hubspot_search_body: { filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: base.lead.email }] }], properties: ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'n8n_request_id'], limit: 1 } } }];"
+      },
+      "id": "1c40c14d-bd3c-4a06-817b-eaf0fd56934e",
+      "name": "Prepare Email Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1520,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.HUBSPOT_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.hubspot_search_body) }}",
+        "options": {}
+      },
+      "id": "95c6fd68-5c58-4981-957f-cbe28a238308",
+      "name": "HubSpot Search Email - Configure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        40
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "83d4f181-6511-4e97-a975-0392418afeed",
+              "leftValue": "={{ Array.isArray($json.results) && $json.results.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "29bc8a0f-6620-4db4-9369-ad9f641e04e4",
+      "name": "Email Match?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2000,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.hubapi.com/crm/v3/objects/contacts/' + $json.results[0].id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.HUBSPOT_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ properties: { email: $('Parse AI Qualification').first().json.lead.email, firstname: $('Parse AI Qualification').first().json.lead.first_name, lastname: $('Parse AI Qualification').first().json.lead.last_name, company: $('Parse AI Qualification').first().json.lead.company, jobtitle: $('Parse AI Qualification').first().json.lead.job_title, n8n_request_id: $('Parse AI Qualification').first().json.lead.request_id, n8n_lead_score: String($('Parse AI Qualification').first().json.score) } }) }}",
+        "options": {}
+      },
+      "id": "62dfe211-45be-4812-824f-a577249a4e87",
+      "name": "HubSpot Update by Email - Configure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        -60
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/crm/v3/objects/contacts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.HUBSPOT_ACCESS_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ properties: { email: $('Parse AI Qualification').first().json.lead.email, firstname: $('Parse AI Qualification').first().json.lead.first_name, lastname: $('Parse AI Qualification').first().json.lead.last_name, company: $('Parse AI Qualification').first().json.lead.company, jobtitle: $('Parse AI Qualification').first().json.lead.job_title, n8n_request_id: $('Parse AI Qualification').first().json.lead.request_id, n8n_lead_score: String($('Parse AI Qualification').first().json.score) } }) }}",
+        "options": {}
+      },
+      "id": "1880c2ed-47a7-400b-a326-e388b18d76cc",
+      "name": "HubSpot Create Contact - Configure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        140
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Parse AI Qualification').first().json;\nconst route = base.score >= 80 ? 'HOT' : base.score >= 50 ? 'WARM' : 'COLD';\nconst eligible = base.lead.consent === true && route !== 'COLD';\nreturn [{ json: { request_id: base.lead.request_id, email: base.lead.email, first_name: base.lead.first_name, company: base.lead.company, score: base.score, route, qualification_reason: base.qualification_reason, qualification_source: base.qualification_source, consent: base.lead.consent, should_send_initial_email: eligible, should_follow_up: eligible } }];"
+      },
+      "id": "1e34a3d6-49be-4fbc-acf3-09b7c8ee2c14",
+      "name": "Prepare Communications",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b35e4994-63f5-441c-bf5e-5704c4b369fa",
+              "leftValue": "={{ $json.should_send_initial_email }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "53f5418c-e9cb-4bf2-a98b-c80c1e649e75",
+      "name": "Send Initial Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2740,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Prepare Communications').first().json.email }}",
+        "subject": "Thanks for contacting our team",
+        "message": "=Hi {{ $('Prepare Communications').first().json.first_name || 'there' }},<br><br>Thanks for your message. A member of our team will review your request and follow up.<br><br>Best regards,<br>Sales Team",
+        "options": {}
+      },
+      "id": "e6177eeb-26ec-460a-ac6c-1b780f44a4e9",
+      "name": "Gmail Initial Reply - Configure",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2980,
+        -200
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { email_skipped: true, reason: 'COLD route or consent not granted' } }];"
+      },
+      "id": "fcd8dfe7-f517-45a9-b167-eaa4f0f7c150",
+      "name": "Skip Marketing Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2980,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SLACK_BOT_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ channel: $env.SLACK_CHANNEL_ID, text: 'New ' + $('Prepare Communications').first().json.route + ' lead\\nRequest: ' + $('Prepare Communications').first().json.request_id + '\\nCompany: ' + ($('Prepare Communications').first().json.company || 'Not supplied') + '\\nScore: ' + $('Prepare Communications').first().json.score }) }}",
+        "options": {}
+      },
+      "id": "f6da9fa8-3c17-4790-b4b4-dd2008e44457",
+      "name": "Slack Sales Notification - Configure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3220,
+        -100
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $('Prepare Communications').first().json.request_id }}",
+            "email": "={{ $('Prepare Communications').first().json.email }}",
+            "route": "={{ $('Prepare Communications').first().json.route }}",
+            "score": "={{ $('Prepare Communications').first().json.score }}",
+            "qualification_source": "={{ $('Prepare Communications').first().json.qualification_source }}",
+            "logged_at": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "id": "dc6c2e47-13d0-40f2-8e3e-f9110f96bc3c",
+      "name": "Google Sheets Qualification Log - Configure",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3460,
+        -100
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { request_id: $('Prepare Communications').first().json.request_id, status: 'accepted', qualification: { route: $('Prepare Communications').first().json.route, score: $('Prepare Communications').first().json.score, source: $('Prepare Communications').first().json.qualification_source } } }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "486d2f52-cbbd-4897-83f4-b4b9948c62bb",
+      "name": "Respond Safe 202",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        3700,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "db16e5db-b0eb-43a1-bc5c-61d7ba5c06ec",
+              "leftValue": "={{ $('Prepare Communications').first().json.should_follow_up }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cab6a112-6520-4389-9209-a5e7d6062d71",
+      "name": "Schedule Follow-Up?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3940,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "days"
+      },
+      "id": "65349f8b-e3dd-4a39-912e-057e00293c68",
+      "name": "Wait 2 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4180,
+        -180
+      ],
+      "webhookId": "68c4787b-a4de-49a0-a543-0be37437382b"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Prepare Communications').first().json.email }}",
+        "subject": "Following up on your request",
+        "message": "=Hi {{ $('Prepare Communications').first().json.first_name || 'there' }},<br><br>I'm following up on your recent request. Reply to this email if you would like to discuss the next steps.<br><br>Best regards,<br>Sales Team",
+        "options": {}
+      },
+      "id": "a667122c-c874-4df4-acb9-d4a94d004479",
+      "name": "Gmail Follow-Up - Configure",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4420,
+        -180
+      ],
+      "disabled": true,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Lead Capture": {
+      "main": [
+        [
+          {
+            "node": "Normalize and Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize and Validate": {
+      "main": [
+        [
+          {
+            "node": "Valid Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Lead?": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets Lead Store - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Safe Validation Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Safe Validation Failure": {
+      "main": [
+        [
+          {
+            "node": "Respond Safe 422",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets Lead Store - Configure": {
+      "main": [
+        [
+          {
+            "node": "Company Enrichment - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Enrichment - Configure": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Qualification - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Qualification - Configure": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Qualification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Qualification": {
+      "main": [
+        [
+          {
+            "node": "HOT Score?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HOT Score?": {
+      "main": [
+        [
+          {
+            "node": "Route HOT",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "WARM Score?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WARM Score?": {
+      "main": [
+        [
+          {
+            "node": "Route WARM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route COLD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route HOT": {
+      "main": [
+        [
+          {
+            "node": "Prepare Request ID Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route WARM": {
+      "main": [
+        [
+          {
+            "node": "Prepare Request ID Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route COLD": {
+      "main": [
+        [
+          {
+            "node": "Prepare Request ID Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Request ID Search": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Search Request ID - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Search Request ID - Configure": {
+      "main": [
+        [
+          {
+            "node": "Request ID Match?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request ID Match?": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Update by Request ID - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Email Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Update by Request ID - Configure": {
+      "main": [
+        [
+          {
+            "node": "Prepare Communications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email Search": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Search Email - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Search Email - Configure": {
+      "main": [
+        [
+          {
+            "node": "Email Match?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Match?": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Update by Email - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HubSpot Create Contact - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Update by Email - Configure": {
+      "main": [
+        [
+          {
+            "node": "Prepare Communications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Create Contact - Configure": {
+      "main": [
+        [
+          {
+            "node": "Prepare Communications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Communications": {
+      "main": [
+        [
+          {
+            "node": "Send Initial Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Initial Email?": {
+      "main": [
+        [
+          {
+            "node": "Gmail Initial Reply - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Marketing Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Initial Reply - Configure": {
+      "main": [
+        [
+          {
+            "node": "Slack Sales Notification - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Marketing Email": {
+      "main": [
+        [
+          {
+            "node": "Slack Sales Notification - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Slack Sales Notification - Configure": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets Qualification Log - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets Qualification Log - Configure": {
+      "main": [
+        [
+          {
+            "node": "Respond Safe 202",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Safe 202": {
+      "main": [
+        [
+          {
+            "node": "Schedule Follow-Up?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Follow-Up?": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Days",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Wait 2 Days": {
+      "main": [
+        [
+          {
+            "node": "Gmail Follow-Up - Configure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4b2b97e2-dbb1-479a-854c-b94f506fc204",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
