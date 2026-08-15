@@ -1,0 +1,218 @@
+{
+  "name": "Template - Lead Validation Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Safe lead intake boundary\n\nThis reusable template normalizes a JSON lead request and returns either HTTP 202 or a controlled HTTP 422. It has no external integrations and can be tested with invented data immediately after import.",
+        "height": 260,
+        "width": 420
+      },
+      "id": "491588b7-4f0a-45c9-843a-957de969c789",
+      "name": "Read Me",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1040,
+        -340
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "portfolio-lead-validation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "dcd5b958-6a03-4e45-b842-73e06088e510",
+      "name": "Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        0
+      ],
+      "webhookId": "0e296f5d-d5af-4c79-8d35-c75f8f4608f3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.body ?? $json;\nconst headers = $json.headers ?? {};\nconst clean = (value, max = 200) => typeof value === 'string' ? value.trim().slice(0, max) : '';\nconst requestId = clean(input.request_id ?? headers['x-request-id'], 100);\nconst email = clean(input.email, 254).toLowerCase();\nconst consentValue = input.consent;\nconst consent = consentValue === true || ['true', 'yes', '1'].includes(String(consentValue).toLowerCase());\nconst companyDomain = clean(input.company_domain, 253).toLowerCase().replace(/^https?:\\/\\//, '').replace(/\\/.*$/, '');\nconst errors = [];\nif (!requestId) errors.push({ field: 'request_id', message: 'request_id is required' });\nif (!email) errors.push({ field: 'email', message: 'email is required' });\nelse if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) errors.push({ field: 'email', message: 'email format is invalid' });\nif (consentValue === undefined || consentValue === null || consentValue === '') errors.push({ field: 'consent', message: 'consent is required' });\nconst lead = {\n  request_id: requestId,\n  email,\n  first_name: clean(input.first_name, 100),\n  last_name: clean(input.last_name, 100),\n  company: clean(input.company, 160),\n  company_domain: companyDomain,\n  job_title: clean(input.job_title, 160),\n  company_size: clean(input.company_size, 40),\n  message: clean(input.message, 2000),\n  consent\n};\nreturn [{ json: { valid: errors.length === 0, validation_errors: errors, lead } }];"
+      },
+      "id": "09f3850c-4bfd-465e-b541-e01458b36e88",
+      "name": "Normalize and Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "89088ad0-8e1a-4a73-b0ee-840cbd57790c",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e55d674e-8898-4bc0-8707-770b776b7b53",
+      "name": "Valid Request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { request_id: $json.lead?.request_id || null, status: 'validation_failed', errors: $json.validation_errors } }];"
+      },
+      "id": "11f521ce-2f4e-4143-8425-b87074c66b36",
+      "name": "Build Safe 422",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 422
+        }
+      },
+      "id": "5405e9d6-8505-4d7e-8a0a-d134ec55a649",
+      "name": "Respond 422",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        100,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { request_id: $json.lead.request_id, status: 'accepted', normalized_lead: $json.lead } }];"
+      },
+      "id": "e87c6cdf-9935-48aa-b535-c05f3f91ac1c",
+      "name": "Build Safe 202",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "3bcc7fd2-5e2e-464f-88c3-ec24e8beb372",
+      "name": "Respond 202",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        100,
+        -100
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Lead Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize and Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize and Validate": {
+      "main": [
+        [
+          {
+            "node": "Valid Request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Request?": {
+      "main": [
+        [
+          {
+            "node": "Build Safe 202",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Safe 422",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Safe 422": {
+      "main": [
+        [
+          {
+            "node": "Respond 422",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Safe 202": {
+      "main": [
+        [
+          {
+            "node": "Respond 202",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "16a88f27-1d5f-4f63-8bca-3936a92481ef",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
